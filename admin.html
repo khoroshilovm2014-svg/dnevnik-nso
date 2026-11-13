@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель - Дневник НСО</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: #1E1E1E; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .admin-container { width: 393px; height: 852px; background-color: #F8F9FA; position: relative; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); overflow: hidden; }
+        .header { background-color: #0047BB; height: 70px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+        .header h1 { color: white; font-size: 18px; font-weight: 600; }
+        .form-content { padding: 20px; flex: 1; overflow-y: auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 5px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0 12px; border: 1px solid #E0E0E0; border-radius: 6px; font-size: 14px; color: #333; outline: none; background-color: white; }
+        .form-group input, .form-group select { height: 40px; }
+        .form-group textarea { height: 120px; padding: 10px 12px; resize: none; font-family: monospace; font-size: 12px; }
+        
+        .btn-add { width: 100%; height: 45px; background-color: #0047BB; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .btn-import { width: 100%; height: 45px; background-color: #34A853; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 15px; }
+        .btn-danger { width: 100%; height: 45px; background-color: #D32F2F; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .added-lessons { margin-top: 25px; }
+        .added-lessons h3 { font-size: 14px; color: #666; margin-bottom: 10px; border-bottom: 1px solid #E0E0E0; padding-bottom: 5px; }
+        .lesson-item { background-color: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .lesson-info { display: flex; flex-direction: column; gap: 4px; }
+        .lesson-info strong { font-size: 14px; color: #333; }
+        .lesson-info span { font-size: 12px; color: #888; }
+        .btn-delete { background: none; border: none; font-size: 18px; cursor: pointer; color: #D32F2F; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-container">
+        <div class="header"><h1>Админ-панель</h1></div>
+
+        <div class="form-content">
+            <div class="form-group"><label>Класс</label><select id="admin-class"></select></div>
+            
+            <div class="form-group">
+                <label>Дата урока</label>
+                <input type="date" id="admin-date">
+            </div>
+            
+            <div class="form-group">
+                <label>Урок (по счету)</label>
+                <select id="admin-lesson-num">
+                    <option value="1">1 урок (08:30 – 09:10)</option>
+                    <option value="2">2 урок (09:20 – 10:00)</option>
+                    <option value="3">3 урок (10:10 – 10:50)</option>
+                    <option value="4">4 урок (11:00 – 11:40)</option>
+                    <option value="5">5 урок (12:00 – 12:40)</option>
+                    <option value="6">6 урок (13:00 – 13:40)</option>
+                    <option value="7">7 урок (14:00 – 14:40)</option>
+                    <option value="8">8 урок (14:50 – 15:30)</option>
+                </select>
+            </div>
+
+            <div class="form-group"><label>Предмет</label><input type="text" id="admin-subject" placeholder="Математика"></div>
+            <div class="form-group"><label>Кабинет</label><input type="text" id="admin-room" placeholder="204 (или Спортзал)"></div>
+            <button class="btn-add" id="btn-add">Добавить один урок</button>
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #E0E0E0;">
+
+            <div class="form-group">
+                <label>Быстрый импорт (Вставить код JSON)</label>
+                <textarea id="import-data" placeholder='[{"className":"6Б", "dayId":"2023-11-16", "lessonNum":1, "subject":"Математика", "room":"204"}]'></textarea>
+            </div>
+            <button class="btn-import" id="btn-import">Применить импорт</button>
+            <button class="btn-danger" id="btn-clear-all">Удалить ВСЁ расписание</button>
+
+            <div class="added-lessons">
+                <h3>Расписание на будущее</h3>
+                <div id="lessons-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://ladfdchmncgqfazzjchi.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_26Md9wlJfuTCczVIibXGcA_cdrvN9AZ';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const lessonTimes = { 1: "08:30–09:10", 2: "09:20–10:00", 3: "10:10–10:50", 4: "11:00–11:40", 5: "12:00–12:40", 6: "13:00–13:40", 7: "14:00–14:40", 8: "14:50–15:30" };
+        
+        const classSelect = document.getElementById('admin-class');
+        for (let i = 5; i <= 11; i++) {
+            ['А', 'Б', 'В'].forEach(letter => {
+                const opt = document.createElement('option');
+                opt.value = `${i}${letter}`;
+                opt.textContent = `${i}${letter}`;
+                classSelect.appendChild(opt);
+            });
+        }
+
+        document.getElementById('admin-date').valueAsDate = new Date();
+
+        // --- ФУНКЦИЯ АВТООЧИСТКИ СТАРЫХ УРОКОВ ---
+        async function autoCleanOldData() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            // Удаляем всё, что было до сегодняшнего дня
+            const { error } = await supabaseClient.from('lessons').delete().lt('day_id', todayStr);
+            if (error) console.error("Ошибка автоочистки: ", error);
+            else console.log("Старые уроки удалены");
+        }
+
+        async function loadLessons() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            // Показываем только сегодня и будущее
+            const { data, error } = await supabaseClient.from('lessons').select('*').gte('day_id', todayStr).order('day_id', { ascending: true }).limit(20);
+            const list = document.getElementById('lessons-list');
+            
+            if (error || !data) {
+                list.innerHTML = '<p style="color:red; text-align:center;">Ошибка загрузки</p>';
+                return;
+            }
+
+            list.innerHTML = data.length === 0 ? '<p style="font-size:12px; color:#999; text-align:center;">Пока нет уроков на будущее</p>' : '';
+            
+            data.forEach((lesson) => {
+                const item = document.createElement('div');
+                item.className = 'lesson-item';
+                const d = new Date(lesson.day_id + 'T00:00:00');
+                const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+                item.innerHTML = `
+                    <div class="lesson-info">
+                        <strong>${lesson.lesson_num} урок: ${lesson.subject} (${lesson.class_name})</strong>
+                        <span>${dateStr} | ${lesson.time} | ${lesson.room || ''}</span>
+                    </div>
+                    <button class="btn-delete" onclick="deleteLesson(${lesson.id})">🗑</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        document.getElementById('btn-add').addEventListener('click', async () => {
+            const className = document.getElementById('admin-class').value;
+            const dayId = document.getElementById('admin-date').value;
+            const lessonNum = document.getElementById('admin-lesson-num').value;
+            const subject = document.getElementById('admin-subject').value.trim();
+            const room = document.getElementById('admin-room').value.trim();
+
+            if (!subject || !dayId) { alert("Выберите дату и напишите предмет!"); return; }
+
+            const { error } = await supabaseClient.from('lessons').insert([{ 
+                class_name: className, week: 'auto', day_id: dayId, lesson_num: parseInt(lessonNum), time: lessonTimes[lessonNum], subject: subject, room: room 
+            }]);
+
+            if (error) { alert("Ошибка добавления: " + error.message); return; }
+            
+            document.getElementById('admin-subject').value = '';
+            document.getElementById('admin-room').value = '';
+            loadLessons();
+        });
+
+        document.getElementById('btn-import').addEventListener('click', async () => {
+            const rawData = document.getElementById('import-data').value.trim();
+            if (!rawData) { alert("Вставьте код!"); return; }
+
+            try {
+                const parsed = JSON.parse(rawData);
+                const lessonsToInsert = parsed.map(item => ({
+                    class_name: item.className, week: 'auto', day_id: item.dayId, lesson_num: parseInt(item.lessonNum), time: lessonTimes[item.lessonNum], subject: item.subject, room: item.room
+                }));
+
+                const { error } = await supabaseClient.from('lessons').insert(lessonsToInsert);
+                if (error) throw error;
+
+                document.getElementById('import-data').value = ''; 
+                loadLessons();
+                alert(`Успешно добавлено ${parsed.length} уроков!`);
+            } catch (e) { alert("Ошибка: " + e.message); }
+        });
+
+        document.getElementById('btn-clear-all').addEventListener('click', async () => {
+            if (confirm("ВНИМАНИЕ! Удалить ВСЁ расписание (включая будущее)?")) {
+                const { error } = await supabaseClient.from('lessons').delete().neq('id', 0);
+                if (error) alert("Ошибка: " + error.message);
+                else { loadLessons(); alert("Все уроки удалены."); }
+            }
+        });
+
+        async function deleteLesson(id) {
+            if (confirm("Удалить этот урок?")) {
+                const { error } = await supabaseClient.from('lessons').delete().eq('id', id);
+                if (error) alert("Ошибка: " + error.message);
+                else loadLessons();
+            }
+        }
+
+        // --- ЗАПУСК ---
+        autoCleanOldData().then(() => loadLessons());
+    </script>
+</body>
+</html>
