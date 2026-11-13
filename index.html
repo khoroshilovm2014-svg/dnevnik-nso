@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дневник НСО</title>
+    
+    <!-- ИКОНКИ ДЛЯ ДОБАВЛЕНИЯ НА РАБОЧИЙ СТОЛ -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0047BB">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background-color: #1E1E1E;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .phone {
+            width: 100%;
+            max-width: 393px;
+            height: 100vh;
+            max-height: 852px;
+            background-color: #F8F9FA;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+        @media (max-width: 400px) {
+            .phone { max-height: 100vh; max-width: 100%; border-radius: 0; }
+        }
+        .header { background-color: #0047BB; height: 70px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+        .header h1 { color: white; font-size: 18px; font-weight: 600; }
+        .top-bar { padding: 15px 16px 10px 16px; flex-shrink: 0; position: relative; }
+        .info-bar { height: 36px; background-color: white; border: 1.5px solid #0047BB; border-radius: 6px; display: flex; align-items: center; }
+        .info-item { flex: 1; display: flex; justify-content: center; align-items: center; gap: 8px; color: #0047BB; font-size: 14px; font-weight: 600; cursor: pointer; height: 100%; }
+        .divider { width: 1px; height: 100%; background-color: #E0E0E0; }
+        
+        .dropdown-menu { display: none; position: absolute; top: 60px; background: white; border: 1px solid #E0E0E0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; width: 200px; max-height: 250px; overflow-y: auto; }
+        .dropdown-menu.active { display: flex; flex-direction: column; }
+        #class-menu { left: 16px; }
+        #date-menu { right: 16px; }
+        
+        .dropdown-item { padding: 12px 15px; font-size: 14px; color: #333; cursor: pointer; border-bottom: 1px solid #F0F0F0; }
+        .dropdown-item:last-child { border-bottom: none; }
+        .dropdown-item:hover, .dropdown-item.selected { background-color: #F0F4FF; color: #0047BB; font-weight: 600; }
+
+        .calendar { display: flex; justify-content: space-between; padding: 0 16px 15px 16px; flex-shrink: 0; }
+        .date-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 65px; height: 75px; background-color: white; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+        .date-item.active { background-color: #0047BB; color: white; box-shadow: 0 4px 10px rgba(0, 71, 187, 0.3); }
+        .date-day { font-size: 13px; font-weight: 600; margin-bottom: 4px; text-transform: uppercase; color: #8C8C8C; }
+        .date-item.active .date-day { color: #A0C0FF; }
+        .date-num { font-size: 20px; font-weight: 700; color: #333333; }
+        .date-item.active .date-num { color: white; }
+
+        .content { flex: 1; overflow-y: auto; background-color: #F8F9FA; scrollbar-width: none; }
+        .content::-webkit-scrollbar { display: none; }
+        
+        .day-header { background-color: #E8EDF5; padding: 12px 16px; font-size: 13px; font-weight: 700; color: #333333; position: sticky; top: 0; z-index: 5; }
+        .lesson { padding: 16px; border-bottom: 1px solid #E0E0E0; background-color: white; }
+        .lesson-time { color: #8C8C8C; font-size: 12px; margin-bottom: 6px; }
+        .lesson-main { display: flex; align-items: flex-start; gap: 10px; }
+        .lesson-number { color: #0047BB; font-size: 16px; font-weight: 700; min-width: 15px; }
+        .lesson-name { color: #000000; font-size: 16px; font-weight: 700; }
+        .lesson-room { color: #8C8C8C; font-size: 13px; }
+        
+        .cancelled-box { margin: 16px; background-color: #FFEBEE; border: 1px solid #FFCDD2; border-radius: 12px; padding: 20px; text-align: center; color: #D32F2F; font-size: 14px; font-weight: 700; }
+        
+        /* ИСПРАВЛЕННЫЙ ТОСТ (Всплывает сверху, а не внизу) */
+        .toast { 
+            position: absolute; 
+            top: 150px; /* Под календарем */
+            left: 50%; 
+            transform: translateX(-50%); 
+            background-color: #D32F2F; 
+            color: white; 
+            padding: 12px 16px; 
+            border-radius: 8px; 
+            font-size: 14px; 
+            font-weight: 600; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
+            opacity: 0; 
+            transition: opacity 0.3s; 
+            pointer-events: none; 
+            width: 90%; 
+            text-align: center; 
+            line-height: 1.4; 
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="phone">
+        <div class="header"><h1>Расписание</h1></div>
+        
+        <div class="top-bar">
+            <div class="info-bar">
+                <div class="info-item" id="class-select-btn">
+                    <span id="current-class">6Б класс</span>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <div class="divider"></div>
+                <div class="info-item" id="date-select-btn">
+                    <span id="current-date-range">Загрузка...</span>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </div>
+            <div class="dropdown-menu" id="class-menu"></div>
+            <div class="dropdown-menu" id="date-menu">
+                <div class="dropdown-item selected" data-week="0">Эта неделя</div>
+                <div class="dropdown-item" data-week="1">Следующая</div>
+            </div>
+        </div>
+
+        <div class="calendar" id="calendar"></div>
+        <div class="content" id="content"></div>
+        <div class="toast" id="toast"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://ladfdchmncgqfazzjchi.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_26Md9wlJfuTCczVIibXGcA_cdrvN9AZ';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const classesList = [];
+        for (let i = 5; i <= 11; i++) {
+            ['А', 'Б', 'В'].forEach(letter => { classesList.push(`${i}${letter}`); });
+        }
+
+        function getWeekDates(weekOffset = 0) {
+            const today = new Date();
+            const dayOfWeek = today.getDay() || 7; 
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - dayOfWeek + 1 + (weekOffset * 7));
+            
+            const dates = [];
+            const dayNames = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ'];
+            
+            for (let i = 0; i < 5; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                const isoDate = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                dates.push({
+                    id: isoDate,
+                    dayName: dayNames[i],
+                    dateNum: d.getDate(),
+                    fullDate: d
+                });
+            }
+            return dates;
+        }
+
+        let currentWeekOffset = 0;
+        let currentClass = '6Б'; 
+        const todayStr = new Date().toISOString().split('T')[0];
+        let currentDayId = todayStr; 
+
+        const calendarContainer = document.getElementById('calendar');
+        const contentContainer = document.getElementById('content');
+        const dateRangeText = document.getElementById('current-date-range');
+        const dateMenu = document.getElementById('date-menu');
+        const dateSelectBtn = document.getElementById('date-select-btn');
+        const classMenu = document.getElementById('class-menu');
+        const classSelectBtn = document.getElementById('class-select-btn');
+        const currentClassText = document.getElementById('current-class');
+        const toast = document.getElementById('toast');
+
+        classesList.forEach(cls => {
+            const item = document.createElement('div');
+            item.className = `dropdown-item ${cls === currentClass ? 'selected' : ''}`;
+            item.textContent = `${cls} класс`;
+            item.dataset.cls = cls;
+            item.addEventListener('click', () => {
+                currentClass = cls;
+                currentClassText.textContent = `${cls} класс`;
+                classMenu.classList.remove('active');
+                document.querySelectorAll('#class-menu .dropdown-item').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+                fetchSchedule();
+            });
+            classMenu.appendChild(item);
+        });
+
+        function isNextWeekAvailable() {
+            const now = new Date();
+            return now.getDay() === 0 && now.getHours() >= 19;
+        }
+
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3500);
+        }
+
+        function renderCalendar(offset) {
+            calendarContainer.innerHTML = '';
+            const dates = getWeekDates(offset);
+            
+            const startDay = dates[0].dateNum;
+            const endDay = dates[4].dateNum;
+            const month = dates[0].fullDate.toLocaleString('ru-RU', { month: 'short' });
+            dateRangeText.textContent = `${startDay}-${endDay} ${month}`;
+
+            dates.forEach(date => {
+                const dateItem = document.createElement('div');
+                dateItem.className = `date-item ${date.id === currentDayId ? 'active' : ''}`;
+                dateItem.innerHTML = `<div class="date-day">${date.dayName}</div><div class="date-num">${date.dateNum}</div>`;
+                
+                dateItem.addEventListener('click', () => {
+                    document.querySelectorAll('.date-item').forEach(el => el.classList.remove('active'));
+                    dateItem.classList.add('active');
+                    currentDayId = date.id;
+                    fetchSchedule();
+                });
+                calendarContainer.appendChild(dateItem);
+            });
+        }
+
+        async function fetchSchedule() {
+            contentContainer.innerHTML = '<div class="day-header">Загрузка...</div>';
+
+            const { data: lessons, error } = await supabaseClient
+                .from('lessons')
+                .select('*')
+                .eq('class_name', currentClass)
+                .eq('day_id', currentDayId);
+
+            contentContainer.innerHTML = '';
+
+            const dayHeader = document.createElement('div');
+            dayHeader.className = 'day-header';
+            
+            const dateObj = new Date(currentDayId + 'T00:00:00');
+            const options = { weekday: 'long', day: 'numeric', month: 'long' };
+            let formattedDate = dateObj.toLocaleDateString('ru-RU', options);
+            formattedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+            
+            dayHeader.textContent = formattedDate;
+            contentContainer.appendChild(dayHeader);
+
+            if (error) {
+                contentContainer.innerHTML += '<div class="cancelled-box">Ошибка загрузки данных.</div>';
+                return;
+            }
+
+            if (lessons.length === 0) {
+                contentContainer.innerHTML += '<div class="cancelled-box" style="background-color: #F0F0F0; color: #666; border-color: #CCC;">На этот день расписания нет</div>';
+                return;
+            }
+
+            lessons.sort((a, b) => a.lesson_num - b.lesson_num);
+
+            lessons.forEach(lesson => {
+                const lessonDiv = document.createElement('div');
+                lessonDiv.className = 'lesson';
+                lessonDiv.innerHTML = `
+                    <div class="lesson-time">${lesson.time}</div>
+                    <div class="lesson-main">
+                        <div class="lesson-number">${lesson.lesson_num}</div>
+                        <div class="lesson-info">
+                            <div class="lesson-name">${lesson.subject}</div>
+                            <div class="lesson-room">${lesson.room ? (isNaN(lesson.room) ? lesson.room : 'каб. ' + lesson.room) : ''}</div>
+                        </div>
+                    </div>
+                `;
+                contentContainer.appendChild(lessonDiv);
+            });
+        }
+
+        classSelectBtn.addEventListener('click', (e) => { e.stopPropagation(); classMenu.classList.toggle('active'); dateMenu.classList.remove('active'); });
+        dateSelectBtn.addEventListener('click', (e) => { e.stopPropagation(); dateMenu.classList.toggle('active'); classMenu.classList.remove('active'); });
+
+        document.querySelectorAll('#date-menu .dropdown-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const selectedWeek = parseInt(item.dataset.week);
+
+                if (selectedWeek === 1 && !isNextWeekAvailable()) {
+                    showToast("Недоступно! Расписание на след. неделю откроется в воскресенье после 19:00.");
+                    dateMenu.classList.remove('active');
+                    return;
+                }
+
+                currentWeekOffset = selectedWeek;
+                currentDayId = getWeekDates(currentWeekOffset)[0].id;
+                
+                document.querySelectorAll('#date-menu .dropdown-item').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+                
+                renderCalendar(currentWeekOffset);
+                fetchSchedule();
+                dateMenu.classList.remove('active');
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!classSelectBtn.contains(e.target) && !classMenu.contains(e.target)) classMenu.classList.remove('active');
+            if (!dateSelectBtn.contains(e.target) && !dateMenu.contains(e.target)) dateMenu.classList.remove('active');
+        });
+
+        renderCalendar(0);
+        fetchSchedule();
+    </script>
+</body>
+</html>
